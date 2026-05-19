@@ -4,6 +4,10 @@ Burp Suite extension that loads a Swagger/OpenAPI document and imports each endp
 
 ## Quick Manual — Build & Import
 
+Download the pre-built `.jar` file form [releases](https://github.com/the-rend/swagger2repeater/releases)
+
+OR
+
 1. Generate a local Burp API stub JAR:
 
 ```bash
