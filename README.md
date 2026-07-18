@@ -3,6 +3,9 @@
 Burp Suite extension that loads a Swagger/OpenAPI document and imports each endpoint into Repeater.
 
 ## Quick Manual — Build & Import
+Download the pre-built `.jar` file form [releases](https://github.com/the-rend/swagger2repeater/releases)
+
+OR
 
 Download the pre-built `.jar` file form [releases](https://github.com/the-rend/swagger2repeater/releases)
 
