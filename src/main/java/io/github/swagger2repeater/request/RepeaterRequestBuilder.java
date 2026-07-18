@@ -98,13 +98,13 @@ public final class RepeaterRequestBuilder {
     private URI toUri(String baseUrl) {
         try {
             if (baseUrl == null || baseUrl.isBlank()) {
-                return new URI("http://localhost");
+                return new URI("https://localhost");
             }
             if (baseUrl.startsWith("/")) {
-                return new URI("http://localhost" + baseUrl);
+                return new URI("https://localhost" + baseUrl);
             }
             if (!baseUrl.contains("://")) {
-                return new URI("http://" + baseUrl);
+                return new URI("https://" + baseUrl);
             }
             return new URI(baseUrl);
         } catch (URISyntaxException e) {
