@@ -7,10 +7,6 @@ Download the pre-built `.jar` file form [releases](https://github.com/the-rend/s
 
 OR
 
-Download the pre-built `.jar` file form [releases](https://github.com/the-rend/swagger2repeater/releases)
-
-OR
-
 1. Generate a local Burp API stub JAR:
 
 ```bash
