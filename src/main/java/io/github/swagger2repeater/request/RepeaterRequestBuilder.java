@@ -15,53 +15,40 @@ import java.util.StringJoiner;
 
 public final class RepeaterRequestBuilder {
     public BuiltRequest build(ApiOperation operation, AuthConfig authConfig) {
-        URI baseUri = toUri(operation.baseUrl());
-        String path = buildPath(operation.path(), operation.queryParameters());
-        byte[] request = buildRawRequest(operation, baseUri, path, authConfig);
-        return new BuiltRequest(host(baseUri), port(baseUri), isHttps(baseUri), request, operation.endpointName());
+        return build(operation, authConfig, null);
     }
 
     public BuiltRequest build(ApiOperation operation, AuthConfig authConfig, java.util.Map<String, String> extraHeaders) {
         URI baseUri = toUri(operation.baseUrl());
         String path = buildPath(operation.path(), operation.queryParameters());
-        byte[] request = buildRawRequestWithHeaders(operation, baseUri, path, authConfig, extraHeaders);
-        return new BuiltRequest(host(baseUri), port(baseUri), isHttps(baseUri), request, operation.endpointName());
-    }
-
-    private byte[] buildRawRequest(ApiOperation operation, URI baseUri, String path, AuthConfig authConfig) {
-        StringBuilder request = new StringBuilder();
-        request.append(operation.method()).append(' ').append(path).append(" HTTP/1.1\r\n");
-        request.append("Host: ").append(hostHeader(baseUri)).append("\r\n");
-
-        Map<String, String> headers = new LinkedHashMap<>(operation.headers());
-        headers.entrySet().removeIf(entry -> "host".equalsIgnoreCase(entry.getKey()));
-        applyAuth(headers, authConfig);
-        headers.forEach((name, value) -> request.append(name).append(": ").append(value == null || value.isBlank() ? defaultHeaderValue(name) : value).append("\r\n"));
-
-        if (!operation.exampleBody().isBlank()) {
-            if (!hasHeader(headers, "Content-Type")) {
-                request.append("Content-Type: ").append(defaultContentType(operation)).append("\r\n");
-            }
-            byte[] bodyBytes = operation.exampleBody().getBytes(StandardCharsets.UTF_8);
-            request.append("Content-Length: ").append(bodyBytes.length).append("\r\n");
-            request.append("\r\n").append(operation.exampleBody());
-        } else {
-            request.append("\r\n");
-        }
-
-        return request.toString().getBytes(StandardCharsets.UTF_8);
-    }
-
-    private byte[] buildRawRequestWithHeaders(ApiOperation operation, URI baseUri, String path, AuthConfig authConfig, java.util.Map<String, String> extraHeaders) {
-        StringBuilder request = new StringBuilder();
-        request.append(operation.method()).append(' ').append(path).append(" HTTP/1.1\r\n");
-        request.append("Host: ").append(hostHeader(baseUri)).append("\r\n");
 
         Map<String, String> headers = new LinkedHashMap<>(operation.headers());
         if (extraHeaders != null) {
             headers.putAll(extraHeaders);
         }
-        headers.entrySet().removeIf(entry -> "host".equalsIgnoreCase(entry.getKey()));
+        // A user-supplied Host header overrides the connection target derived from the base URL.
+        String hostOverride = extractHeader(headers, "Host");
+
+        String connectHost = host(baseUri);
+        int connectPort = port(baseUri);
+        boolean useHttps = isHttps(baseUri);
+        String hostHeaderValue = hostHeader(baseUri);
+        if (hostOverride != null && !hostOverride.isBlank()) {
+            HostPort override = parseHostPort(hostOverride.trim(), useHttps);
+            connectHost = override.host();
+            connectPort = override.port();
+            hostHeaderValue = hostOverride.trim();
+        }
+
+        byte[] request = buildRawRequest(operation, path, authConfig, headers, hostHeaderValue);
+        return new BuiltRequest(connectHost, connectPort, useHttps, request, operation.endpointName());
+    }
+
+    private byte[] buildRawRequest(ApiOperation operation, String path, AuthConfig authConfig, Map<String, String> headers, String hostHeaderValue) {
+        StringBuilder request = new StringBuilder();
+        request.append(operation.method()).append(' ').append(path).append(" HTTP/1.1\r\n");
+        request.append("Host: ").append(hostHeaderValue).append("\r\n");
+
         applyAuth(headers, authConfig);
         headers.forEach((name, value) -> request.append(name).append(": ").append(value == null || value.isBlank() ? defaultHeaderValue(name) : value).append("\r\n"));
 
@@ -159,6 +146,53 @@ public final class RepeaterRequestBuilder {
 
     private String safe(String value) {
         return value == null ? "" : value;
+    }
+
+    private HostPort parseHostPort(String hostHeader, boolean useHttps) {
+        int defaultPort = useHttps ? 443 : 80;
+        // IPv6 literal, e.g. [::1]:8080 or [::1]
+        if (hostHeader.startsWith("[")) {
+            int close = hostHeader.indexOf(']');
+            if (close > 0) {
+                String host = hostHeader.substring(0, close + 1);
+                String rest = hostHeader.substring(close + 1);
+                if (rest.startsWith(":")) {
+                    return new HostPort(host, parsePort(rest.substring(1), defaultPort));
+                }
+                return new HostPort(host, defaultPort);
+            }
+            return new HostPort(hostHeader, defaultPort);
+        }
+        int colon = hostHeader.lastIndexOf(':');
+        if (colon >= 0) {
+            return new HostPort(hostHeader.substring(0, colon), parsePort(hostHeader.substring(colon + 1), defaultPort));
+        }
+        return new HostPort(hostHeader, defaultPort);
+    }
+
+    private int parsePort(String value, int defaultPort) {
+        try {
+            int parsed = Integer.parseInt(value.trim());
+            return parsed >= 0 && parsed <= 65535 ? parsed : defaultPort;
+        } catch (NumberFormatException exception) {
+            return defaultPort;
+        }
+    }
+
+    private record HostPort(String host, int port) {
+    }
+
+    private String extractHeader(Map<String, String> headers, String headerName) {
+        String found = null;
+        var iterator = headers.entrySet().iterator();
+        while (iterator.hasNext()) {
+            var entry = iterator.next();
+            if (headerName.equalsIgnoreCase(entry.getKey())) {
+                found = entry.getValue();
+                iterator.remove();
+            }
+        }
+        return found;
     }
 
     private boolean hasHeader(Map<String, String> headers, String headerName) {
